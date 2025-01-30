@@ -33,11 +33,11 @@ python main.py
 # Картинки-примеры
 <table>
   <tr>
-    <td>Картинка 1</td>
+    <td>Приветственное сообщение</td>
     <td><img src="images/image1.png"></td>
   </tr>
   <tr>
-    <td>Картинка 2</td>
+    <td>Основной процесс</td>
     <td><img src="images/image2.png"></td>
   </tr>
 </table>

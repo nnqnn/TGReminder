@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.utils import executor
@@ -33,7 +34,11 @@ async def send_reminders():
 
 @dp.message_handler(commands=['start'])
 async def start_command(message: types.Message):
-    await message.reply("Привет! Я бот-напоминалка. Что вам напомнить?")
+    await message.reply("Привет! Я бот-напоминалка. Чтобы создать напоминание, используйте команду /remind")
+
+@dp.message_handler(commands=['remind'])
+async def remind_command(message: types.Message):
+    await message.reply("Что вам напомнить?")
     user_states[message.chat.id] = {'step': 'waiting_for_task'}
 
 @dp.message_handler()
@@ -45,7 +50,7 @@ async def handle_messages(message: types.Message):
         if state['step'] == 'waiting_for_task':
             state['task_text'] = message.text
             state['step'] = 'waiting_for_time'
-            await message.reply("Через какое время напомнить? Например: 10 минут, 2 часа, 1 день, 30 секунд")
+            await message.reply("Через какое время напомнить? Например: 1 час 5 минут, 2 дня 3 часа 10 минут")
         
         elif state['step'] == 'waiting_for_time':
             try:
@@ -57,24 +62,33 @@ async def handle_messages(message: types.Message):
                               "месяц": "days", "месяца": "days", "месяцев": "days",
                               "год": "days", "года": "days", "лет": "days"}
                 
-                parts = message.text.split()
-                amount = int(parts[0])
-                unit = parts[1].lower()
+                time_matches = re.findall(r"(\d+)\s*(\D+)", message.text.lower())
+                if not time_matches:
+                    raise ValueError("Неверный формат времени")
                 
-                if unit in time_units:
-                    kwargs = {time_units[unit]: amount * (30 if unit.startswith("месяц") else 365 if unit.startswith("год") else 1)}
-                    reminder_time = datetime.now() + timedelta(**kwargs)
-                    
-                    if chat_id not in reminders:
-                        reminders[chat_id] = []
-                    reminders[chat_id].append((reminder_time, state['task_text']))
-                    
-                    await message.reply(f"\U0001F4CC Запомнил! Напомню через {amount} {unit}: {state['task_text']}")
-                    del user_states[chat_id]
-                else:
-                    await message.reply("Не удалось понять время. Пример: 10 минут, 2 часа, 1 день, 30 секунд")
+                kwargs = {}
+                for amount, unit in time_matches:
+                    amount = int(amount)
+                    unit = unit.rstrip("а").rstrip("я").strip()  # Нормализация слов
+                    if unit in time_units:
+                        key = time_units[unit]
+                        if key in kwargs:
+                            kwargs[key] += amount
+                        else:
+                            kwargs[key] = amount * (30 if unit.startswith("месяц") else 365 if unit.startswith("год") else 1)
+                    else:
+                        raise ValueError("Не удалось распознать единицу времени")
+                
+                reminder_time = datetime.now() + timedelta(**kwargs)
+                
+                if chat_id not in reminders:
+                    reminders[chat_id] = []
+                reminders[chat_id].append((reminder_time, state['task_text']))
+                
+                await message.reply(f"\U0001F4CC Запомнил! Напомню через {message.text}: {state['task_text']}")
+                del user_states[chat_id]
             except Exception as e:
-                await message.reply("Ошибка обработки времени. Попробуйте снова, например: 10 минут, 2 часа, 1 день")
+                await message.reply("Ошибка обработки времени. Попробуйте снова, например: 1 час 5 минут, 2 дня 3 часа 10 минут")
                 logging.error(f"Ошибка обработки времени: {e}")
 
 if __name__ == '__main__':
